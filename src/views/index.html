@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turnstile Solver API</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen flex items-center justify-center p-6">
+  <div class="bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-3xl border border-red-500">
+    <h1 class="text-4xl font-extrabold mb-4 text-center text-red-500 tracking-wide">
+      🔒 Turnstile Solver API
+    </h1>
+    <p class="mb-6 text-center text-gray-400">
+      Send requests to 
+      <code class="bg-gray-700 text-red-400 px-2 py-1 rounded">/turnstile</code> 
+      with <b>url</b> and <b>sitekey</b>.
+    </p>
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-6">
+      <h2 class="text-xl font-semibold mb-4 text-red-400">API Playground</h2>
+      <form id="apiForm" class="space-y-4">
+        <div>
+          <label class="block text-sm mb-1">Website URL</label>
+          <input type="text" id="url" placeholder="https://example.com"
+            class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 focus:ring-2 focus:ring-red-500 outline-none" required />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Sitekey</label>
+          <input type="text" id="sitekey" placeholder="0x4AAAAAAABBBBCCCCC"
+            class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 focus:ring-2 focus:ring-red-500 outline-none" required />
+        </div>
+        <button type="submit"
+          class="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors font-semibold shadow-md">
+          🚀 Send Request
+        </button>
+      </form>
+      <div id="result" class="mt-6 hidden">
+        <h3 class="text-lg font-bold text-red-400 mb-2">/turnstile Response</h3>
+        <pre class="bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"></pre>
+        <button id="checkBtn"
+          class="mt-4 w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors font-semibold shadow-md hidden">
+          🔍 Check Result
+        </button>
+      </div>
+      <div id="finalResult" class="mt-6 hidden">
+        <h3 class="text-lg font-bold text-green-400 mb-2">/result Response</h3>
+        <pre class="bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"></pre>
+      </div>
+    </div>
+    <p class="text-center text-xs text-gray-500 mt-6">
+      Powered by <span class="text-red-400 font-semibold">Turnstile Solver API</span>
+    </p>
+  </div>
+  <script>
+    const form = document.getElementById("apiForm");
+    const resultBox = document.getElementById("result");
+    const resultPre = resultBox.querySelector("pre");
+    const checkBtn = document.getElementById("checkBtn");
+    const finalResultBox = document.getElementById("finalResult");
+    const finalResultPre = finalResultBox.querySelector("pre");
+    let currentId = null;
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const url = document.getElementById("url").value.trim();
+      const sitekey = document.getElementById("sitekey").value.trim();
+      resultBox.classList.remove("hidden");
+      resultPre.textContent = "⏳ Sending request...";
+      checkBtn.classList.add("hidden");
+      finalResultBox.classList.add("hidden");
+      try {
+        const res = await fetch(`/turnstile?url=${encodeURIComponent(url)}&sitekey=${encodeURIComponent(sitekey)}`);
+        const data = await res.json();
+        resultPre.textContent = JSON.stringify(data, null, 2);
+        if (data.task_id) {
+          currentId = data.task_id;
+          checkBtn.classList.remove("hidden");
+        }
+      } catch (err) {
+        resultPre.textContent = "❌ Error: " + err.message;
+      }
+    });
+
+    checkBtn.addEventListener("click", async () => {
+      if (!currentId) return;
+      finalResultBox.classList.remove("hidden");
+      finalResultPre.textContent = "⏳ Checking result...";
+      try {
+        const res = await fetch(`/result?id=${encodeURIComponent(currentId)}`);
+        const data = await res.json();
+        finalResultPre.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        finalResultPre.textContent = "❌ Error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "turnstile-api-server",
+  "version": "1.0.0",
+  "description": "Modular Turnstile API Solver with Playwright",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js --browser-type=chromium --headless=true --thread=8 --port=5000 --useragent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' --host=0.0.0.0",
+    "dev": "src/index.js --browser-type=chromium --headless=true --thread=8 --port=5000 --useragent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' --host=0.0.0.0"
+  },
+  "keywords": [
+    "turnstile",
+    "api",
+    "solver",
+    "playwright",
+    "modular"
+  ],
+  "author": "Vrypt",
+  "license": "MIT",
+  "dependencies": {
+    "colors": "^1.4.0",
+    "commander": "^12.1.0",
+    "express": "^4.19.2",
+    "fs-extra": "^11.2.0",
+    "playwright": "^1.47.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
