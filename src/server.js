@@ -29,33 +29,19 @@ class TurnstileAPIServer {
   }
 
   static HTML_TEMPLATE = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Turnstile Solver</title>
-        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async></script>
-        <script>
-            async function fetchIP() {
-                try {
-                    const response = await fetch('https://api64.ipify.org?format=json');
-                    const data = await response.json();
-                    document.getElementById('ip-display').innerText = \`Your IP: \${data.ip}\`;
-                } catch (error) {
-                    console.error('Error fetching IP:', error);
-                    document.getElementById('ip-display').innerText = 'Failed to fetch IP';
-                }
-            }
-            window.onload = fetchIP;
-        </script>
-    </head>
-    <body>
-        <!-- cf turnstile -->
-        <p id="ip-display">Fetching your IP...</p>
-    </body>
-    </html>
-  `;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Turnstile Solver</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async></script>
+</head>
+<body>
+<!-- cf turnstile -->
+</body>
+</html>
+`;
 
   setupMiddleware() {
     this.app.use(express.json());
@@ -63,59 +49,59 @@ class TurnstileAPIServer {
   }
 
   async initializeBrowserPool() {
-    CustomLogger.info("Starting browser initialization");
-    try {
+    for (let i = 0; i < this.threadCount; i++) {
       let browser;
-      for (let i = 0; i < this.threadCount; i++) {
-        switch (this.browserType) {
-          case 'chromium':
-            browser = await chromium.launch({ headless: this.headless, args: this.browserArgs });
-            break;
-          case 'firefox':
-            browser = await firefox.launch({ headless: this.headless, args: this.browserArgs });
-            break;
-          case 'webkit':
-            browser = await webkit.launch({ headless: this.headless, args: this.browserArgs });
-            break;
-          default:
-            throw new Error(`Unsupported browser type: ${this.browserType}`);
-        }
-
-        this.browserPool.push({ id: i + 1, browser });
-        if (this.debug) CustomLogger.success(`Browser ${i + 1} initialized successfully`);
+      switch (this.browserType) {
+        case 'chromium':
+          browser = await chromium.launch({ headless: this.headless, args: this.browserArgs });
+          break;
+        case 'firefox':
+          browser = await firefox.launch({ headless: this.headless, args: this.browserArgs });
+          break;
+        case 'webkit':
+          browser = await webkit.launch({ headless: this.headless, args: this.browserArgs });
+          break;
+        default:
+          throw new Error(`Unsupported browser type: ${this.browserType}`);
       }
-      CustomLogger.success(`Browser pool initialized with ${this.browserPool.length} browsers`);
-    } catch (error) {
-      CustomLogger.error(`Failed to initialize browser: ${error.message}`);
-      throw error;
+
+      this.browserPool.push({ id: i + 1, browser });
+      if (this.debug) CustomLogger.success(`Browser ${i + 1} ready`);
     }
   }
 
   async getAvailableBrowser() {
     while (true) {
-      const availableBrowser = this.browserPool.find(b => !this.busyBrowsers.has(b.id));
-      if (availableBrowser) {
-        this.busyBrowsers.add(availableBrowser.id);
-        return availableBrowser;
+      const b = this.browserPool.find(x => !this.busyBrowsers.has(x.id));
+      if (b) {
+        this.busyBrowsers.add(b.id);
+        return b;
       }
       await new Promise(r => setTimeout(r, 100));
     }
   }
 
-  releaseBrowser(browserId) {
-    this.busyBrowsers.delete(browserId);
+  releaseBrowser(id) {
+    this.busyBrowsers.delete(id);
   }
 
-  async solveTurnstile(taskId, url, sitekey, action = null, cdata = null) {
-    let proxy = null;
+  async solveTurnstile(
+    taskId,
+    url,
+    sitekey,
+    action = null,
+    cdata = null,
+    cf_selector = "div.cf-turnstile"
+  ) {
     const browserInstance = await this.getAvailableBrowser();
     const startTime = Date.now();
+    let proxy = null;
 
     try {
       if (this.proxySupport) {
-        const proxyFilePath = path.join(__dirname, '../../proxies.txt');
-        if (fs.existsSync(proxyFilePath)) {
-          const proxies = fs.readFileSync(proxyFilePath, 'utf8')
+        const proxyFile = path.join(__dirname, '../../proxies.txt');
+        if (fs.existsSync(proxyFile)) {
+          const proxies = fs.readFileSync(proxyFile, 'utf8')
             .split('\n').map(l => l.trim()).filter(Boolean);
           proxy = proxies[Math.floor(Math.random() * proxies.length)];
         }
@@ -123,118 +109,131 @@ class TurnstileAPIServer {
 
       const contextOptions = {};
       if (proxy) {
-        const parts = proxy.split(':');
-        if (parts.length >= 2) {
-          contextOptions.proxy = {
-            server: parts.length === 2 ? `http://${proxy}` : `${parts[0]}://${parts[1]}:${parts[2]}`
-          };
-          if (parts.length === 5) {
-            contextOptions.proxy.username = parts[3];
-            contextOptions.proxy.password = parts[4];
-          }
+        const p = proxy.split(':');
+        contextOptions.proxy = {
+          server: p.length === 2 ? `http://${proxy}` : `${p[0]}://${p[1]}:${p[2]}`
+        };
+        if (p.length === 5) {
+          contextOptions.proxy.username = p[3];
+          contextOptions.proxy.password = p[4];
         }
       }
 
       const context = await browserInstance.browser.newContext(contextOptions);
       const page = await context.newPage();
 
-      const urlWithSlash = url.endsWith('/') ? url : url + '/';
-      let turnstileDiv = `<div class="cf-turnstile" style="background: white;" data-sitekey="${sitekey}"`;
+      let turnstileDiv = `<div class="cf-turnstile" data-sitekey="${sitekey}"`;
       if (action) turnstileDiv += ` data-action="${action}"`;
       if (cdata) turnstileDiv += ` data-cdata="${cdata}"`;
-      turnstileDiv += '></div>';
+      turnstileDiv += `></div>`;
 
-      const pageData = TurnstileAPIServer.HTML_TEMPLATE.replace("<!-- cf turnstile -->", turnstileDiv);
+      const html = TurnstileAPIServer.HTML_TEMPLATE
+        .replace("<!-- cf turnstile -->", turnstileDiv);
 
-      await page.route(urlWithSlash, route => {
-        route.fulfill({ body: pageData, status: 200, contentType: 'text/html' });
+      const targetUrl = url.endsWith('/') ? url : url + '/';
+
+      await page.route(targetUrl, route => {
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: html
+        });
       });
 
-      await page.goto(urlWithSlash);
-      await page.locator("div.cf-turnstile").evaluate(el => el.style.width = '70px');
+      await page.goto(targetUrl);
+      await page.waitForSelector(cf_selector, { timeout: 5000 });
+      await page.locator(cf_selector).evaluate(el => el.style.width = '70px');
 
       let solved = false;
-      for (let attempt = 0; attempt < 10; attempt++) {
+
+      for (let i = 0; i < 10; i++) {
         try {
-          const turnstileResponse = await page.inputValue("[name=cf-turnstile-response]", { timeout: 2000 });
-          if (!turnstileResponse) {
-            await page.locator("div.cf-turnstile").click({ timeout: 1000 });
+          const token = await page.inputValue(
+            "[name=cf-turnstile-response]",
+            { timeout: 2000 }
+          );
+
+          if (!token) {
+            await page.locator(cf_selector).click({ timeout: 1000 });
             await new Promise(r => setTimeout(r, 500));
           } else {
-            const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(3);
-            CustomLogger.success(`Browser ${browserInstance.id}: Solved in ${elapsedTime}s`);
-            this.results[taskId] = { value: turnstileResponse, elapsed_time: parseFloat(elapsedTime) };
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
+            this.results[taskId] = {
+              value: token,
+              elapsed_time: Number(elapsed)
+            };
             saveResults(this.results);
             solved = true;
             break;
           }
-        } catch { /* retry */ }
+        } catch {}
       }
 
       if (!solved) {
-        const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(3);
-        this.results[taskId] = { value: "CAPTCHA_FAIL", elapsed_time: parseFloat(elapsedTime) };
-        if (this.debug) CustomLogger.error(`Browser ${browserInstance.id}: Failed in ${elapsedTime}s`);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
+        this.results[taskId] = {
+          value: "CAPTCHA_FAIL",
+          elapsed_time: Number(elapsed)
+        };
       }
 
       await context.close();
-    } catch (error) {
-      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(3);
-      this.results[taskId] = { value: "CAPTCHA_FAIL", elapsed_time: parseFloat(elapsedTime) };
-      if (this.debug) CustomLogger.error(`Browser ${browserInstance.id}: Error: ${error.message}`);
+    } catch (e) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
+      this.results[taskId] = {
+        value: "CAPTCHA_FAIL",
+        elapsed_time: Number(elapsed)
+      };
+      if (this.debug) CustomLogger.error(e.message);
     } finally {
       this.releaseBrowser(browserInstance.id);
     }
   }
 
   async processTurnstile(req, res) {
-    const { url, sitekey, action, cdata } = req.query;
+    const { url, sitekey, action, cdata, cf_selector } = req.query;
+
     if (!url || !sitekey) {
-      return res.status(400).json({ status: "error", error: "Both 'url' and 'sitekey' are required" });
+      return res.status(400).json({
+        status: "error",
+        error: "url dan sitekey wajib"
+      });
     }
+
     const taskId = uuidv4();
     this.results[taskId] = "CAPTCHA_NOT_READY";
-    this.solveTurnstile(taskId, url, sitekey, action, cdata).catch(err =>
-      CustomLogger.error(`Background solve error: ${err.message}`)
-    );
+
+    this.solveTurnstile(
+      taskId,
+      url,
+      sitekey,
+      action,
+      cdata,
+      cf_selector || "div.cf-turnstile"
+    ).catch(() => {});
+
     return res.status(202).json({ task_id: taskId });
   }
 
   async getResult(req, res) {
-    const taskId = req.query.id;
-    if (!taskId || !(taskId in this.results)) {
-      return res.status(400).json({ status: "error", error: "Invalid task ID" });
+    const id = req.query.id;
+    if (!id || !(id in this.results)) {
+      return res.status(400).json({ error: "Invalid task id" });
     }
-    const result = this.results[taskId];
-    let statusCode = (typeof result === 'object' && result.value === "CAPTCHA_FAIL") ? 422 : 200;
-    return res.status(statusCode).json(result);
-  }
-
-  async indexHandler(req, res) {
-    const filePath = path.join(process.cwd(), "src", "views", "index.html");
-    const html = fs.readFileSync(filePath, "utf-8");
-    res.send(html);
+    return res.json(this.results[id]);
   }
 
   async start(host, port) {
-    try {
-      await this.initializeBrowserPool();
-      this.app.listen(port, host, () => {
-        CustomLogger.success(`Server running on http://${host}:${port}`);
-      });
-    } catch (error) {
-      CustomLogger.error(`Failed to start server: ${error.message}`);
-      process.exit(1);
-    }
+    await this.initializeBrowserPool();
+    this.app.listen(port, host, () => {
+      CustomLogger.success(`Server running http://${host}:${port}`);
+    });
   }
 
   async cleanup() {
-    CustomLogger.info("Shutting down browser pool...");
-    for (const browserInstance of this.browserPool) {
-      try { await browserInstance.browser.close(); }
-      catch (err) { CustomLogger.error(`Error closing browser ${browserInstance.id}: ${err.message}`); }
+    for (const b of this.browserPool) {
+      await b.browser.close().catch(() => {});
     }
-    CustomLogger.info("Browser pool shutdown complete");
   }
 }
 
