@@ -190,6 +190,12 @@ class TurnstileAPIServer {
     }
   }
 
+  async indexHandler(req, res) {
+    const filePath = path.join(process.cwd(), "src", "views", "index.html");
+    const html = fs.readFileSync(filePath, "utf-8");
+    res.send(html);
+  }
+
   async processTurnstile(req, res) {
     const { url, sitekey, action, cdata, cf_selector } = req.query;
 
